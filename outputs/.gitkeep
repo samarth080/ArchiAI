@@ -1,0 +1,2 @@
+# Generated output files (GLB models, Hypar JSON) are saved here by Phase 3.
+# This directory is served at /outputs/ by Django's MEDIA_URL in development.

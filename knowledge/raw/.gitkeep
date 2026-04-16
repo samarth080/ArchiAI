@@ -1,0 +1,3 @@
+# Placeholder — architectural knowledge documents go here in Phase 5
+# When you have PDF books, place them in this directory and run:
+#   python scripts/ingest_knowledge.py
