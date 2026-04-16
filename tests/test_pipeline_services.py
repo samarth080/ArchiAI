@@ -49,6 +49,47 @@ def test_layout_generation_respects_coverage_limit():
 
     assert footprint["area_sqm"] <= max_allowed_area + 1e-6
     assert len(result["zones"]) > 0
+    assert "layout_metrics" in result
+    assert 0.0 <= result["layout_metrics"]["overall_layout_quality_score"] <= 100.0
+
+
+@pytest.mark.unit
+def test_layout_generation_has_adjacency_and_circulation_scores():
+    bylaws = load_bylaws("india_mumbai", "residential")
+
+    compliance_report = {
+        "adjusted_floors": 2,
+        "buildable_area": {
+            "plot_area_sqm": 1200.0,
+            "buildable_width_m": 27.0,
+            "buildable_depth_m": 34.0,
+        },
+    }
+
+    parsed_input = {
+        "rooms": [
+            "living_room",
+            "kitchen",
+            "bedroom",
+            "bedroom",
+            "bathroom",
+            "staircase",
+            "parking",
+        ],
+        "preferences": {"parking": True},
+        "num_floors": 2,
+        "plot_facing_direction": "north",
+    }
+
+    result = generate_conceptual_layout(parsed_input, compliance_report, bylaws)
+    metrics = result["layout_metrics"]
+
+    assert "floor_metrics" in metrics
+    assert len(metrics["floor_metrics"]) >= 1
+    for floor_metric in metrics["floor_metrics"]:
+        assert 0.0 <= floor_metric["adjacency_score"] <= 100.0
+        assert 0.0 <= floor_metric["circulation_score"] <= 100.0
+        assert 0.0 <= floor_metric["layout_quality_score"] <= 100.0
 
 
 @pytest.mark.unit

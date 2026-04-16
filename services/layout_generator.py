@@ -7,10 +7,39 @@ bylaw outputs from the compliance report.
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 from collections import Counter
 from typing import Dict, List
 
 from services.bylaw_loader import BylawRuleset
+
+
+SLOT_NEIGHBORS = {
+    0: {1, 2},
+    1: {0, 3},
+    2: {0, 3},
+    3: {1, 2},
+}
+
+ROOM_ADJACENCY_WEIGHTS = {
+    ("living_room", "kitchen"): 3.0,
+    ("living_room", "staircase"): 2.5,
+    ("bedroom", "bathroom"): 2.0,
+    ("staircase", "circulation"): 1.5,
+    ("parking", "staircase"): 1.5,
+    ("kitchen", "dining"): 1.0,
+    ("living_room", "balcony"): 1.0,
+}
+
+ROOM_ORIENTATION_PREFERENCES = {
+    "living_room": {"northwest", "northeast"},
+    "kitchen": {"southeast", "northeast"},
+    "bedroom": {"southwest", "northwest", "southeast"},
+    "bathroom": {"southwest", "northwest"},
+    "staircase": {"northwest", "southwest", "southeast", "northeast"},
+    "parking": {"southwest", "southeast"},
+    "puja_room": {"northeast", "northwest"},
+}
 
 
 def _expand_room_program(parsed_input: Dict[str, object]) -> List[str]:
@@ -39,6 +68,33 @@ def _expand_room_program(parsed_input: Dict[str, object]) -> List[str]:
         rooms.append("puja_room")
 
     return rooms
+
+
+def _normalize_room_type(room_type: str) -> str:
+    room = str(room_type or "").strip().lower()
+    if "bed" in room:
+        return "bedroom"
+    if "bath" in room or "toilet" in room or "wash" in room:
+        return "bathroom"
+    return room
+
+
+def _pair_key(room_a: str, room_b: str) -> tuple[str, str]:
+    return tuple(sorted((_normalize_room_type(room_a), _normalize_room_type(room_b))))
+
+
+def _entry_orientations_for_plot_facing(plot_facing_direction: str) -> set[str]:
+    mapping = {
+        "north": {"northwest", "northeast"},
+        "south": {"southwest", "southeast"},
+        "east": {"northeast", "southeast"},
+        "west": {"northwest", "southwest"},
+        "northeast": {"northeast"},
+        "northwest": {"northwest"},
+        "southeast": {"southeast"},
+        "southwest": {"southwest"},
+    }
+    return mapping.get(str(plot_facing_direction or "").lower(), {"northwest", "northeast"})
 
 
 def _compute_coverage_limited_footprint(
@@ -83,12 +139,196 @@ def _quadrant_slots(width_m: float, depth_m: float) -> List[Dict[str, float]]:
     ]
 
 
-def _pop_first(room_queue: List[str], room_type: str) -> bool:
+def _take_first(room_queue: List[str], room_type: str) -> str | None:
     for idx, value in enumerate(room_queue):
         if value == room_type:
-            room_queue.pop(idx)
-            return True
-    return False
+            return room_queue.pop(idx)
+    return None
+
+
+def _build_floor_program(
+    room_queue: List[str],
+    floor: int,
+    slot_capacity: int,
+    parking_requested: bool,
+) -> List[str]:
+    required = ["staircase"] if floor > 0 else ["living_room", "kitchen", "staircase"]
+    if floor == 0 and parking_requested:
+        required.insert(0, "parking")
+
+    floor_program: List[str] = []
+    for room_type in required:
+        taken = _take_first(room_queue, room_type)
+        if taken:
+            floor_program.append(taken)
+        elif room_type in {"staircase", "living_room", "kitchen"}:
+            floor_program.append(room_type)
+
+    while room_queue and len(floor_program) < slot_capacity:
+        floor_program.append(room_queue.pop(0))
+
+    while len(floor_program) < slot_capacity:
+        floor_program.append("multi_use" if floor > 0 else "circulation")
+
+    return floor_program[:slot_capacity]
+
+
+def _candidate_score(
+    room_type: str,
+    slot_idx: int,
+    assigned: Dict[int, str],
+    slots: List[Dict[str, float]],
+    floor: int,
+    plot_facing_direction: str,
+) -> float:
+    score = 0.0
+    normalized_room = _normalize_room_type(room_type)
+    orientation = slots[slot_idx]["orientation"]
+
+    room_preferences = ROOM_ORIENTATION_PREFERENCES.get(normalized_room, set())
+    if orientation in room_preferences:
+        score += 1.0
+
+    if floor == 0 and normalized_room in {"living_room", "parking"}:
+        if orientation in _entry_orientations_for_plot_facing(plot_facing_direction):
+            score += 0.9
+
+    for neighbor_idx in SLOT_NEIGHBORS.get(slot_idx, set()):
+        neighbor_room = assigned.get(neighbor_idx)
+        if not neighbor_room:
+            continue
+        pair_weight = ROOM_ADJACENCY_WEIGHTS.get(_pair_key(normalized_room, neighbor_room), 0.0)
+        score += pair_weight * 1.2
+
+    if normalized_room == "staircase":
+        score += 0.4
+
+    return score
+
+
+def _assign_rooms_to_slots(
+    floor_rooms: List[str],
+    slots: List[Dict[str, float]],
+    floor: int,
+    plot_facing_direction: str,
+) -> Dict[int, str]:
+    remaining = list(floor_rooms)
+    assigned: Dict[int, str] = {}
+
+    for slot_idx in range(len(slots)):
+        best_idx = 0
+        best_score = float("-inf")
+
+        for candidate_idx, candidate in enumerate(remaining):
+            score = _candidate_score(
+                room_type=candidate,
+                slot_idx=slot_idx,
+                assigned=assigned,
+                slots=slots,
+                floor=floor,
+                plot_facing_direction=plot_facing_direction,
+            )
+            if score > best_score:
+                best_score = score
+                best_idx = candidate_idx
+
+        assigned[slot_idx] = remaining.pop(best_idx)
+
+    return assigned
+
+
+def _shortest_path_steps(start: int, target: int) -> int:
+    if start == target:
+        return 0
+
+    frontier = [(start, 0)]
+    visited = {start}
+
+    while frontier:
+        node, steps = frontier.pop(0)
+        for neighbor in SLOT_NEIGHBORS.get(node, set()):
+            if neighbor in visited:
+                continue
+            if neighbor == target:
+                return steps + 1
+            visited.add(neighbor)
+            frontier.append((neighbor, steps + 1))
+
+    return 3
+
+
+def _compute_layout_metrics(zones: List[dict]) -> Dict[str, object]:
+    zones_by_floor: Dict[int, List[dict]] = defaultdict(list)
+    for zone in zones:
+        zones_by_floor[int(zone.get("floor", 0))].append(zone)
+
+    floor_metrics: List[dict] = []
+
+    for floor, floor_zones in sorted(zones_by_floor.items()):
+        slots_by_room: Dict[str, List[int]] = defaultdict(list)
+        for zone in floor_zones:
+            room_type = _normalize_room_type(str(zone.get("room_type", "")))
+            slot_idx = int(zone.get("slot_index", 0))
+            slots_by_room[room_type].append(slot_idx)
+
+        adjacency_possible = 0.0
+        adjacency_satisfied = 0.0
+        unmet_adjacencies: List[str] = []
+
+        for (room_a, room_b), weight in ROOM_ADJACENCY_WEIGHTS.items():
+            slots_a = slots_by_room.get(room_a, [])
+            slots_b = slots_by_room.get(room_b, [])
+            if not slots_a or not slots_b:
+                continue
+
+            adjacency_possible += weight
+            satisfied = any(slot_b in SLOT_NEIGHBORS.get(slot_a, set()) for slot_a in slots_a for slot_b in slots_b)
+            if satisfied:
+                adjacency_satisfied += weight
+            else:
+                unmet_adjacencies.append(f"{room_a}-{room_b}")
+
+        adjacency_score = 100.0 if adjacency_possible == 0 else (adjacency_satisfied / adjacency_possible) * 100.0
+
+        anchor_slots = slots_by_room.get("living_room") or slots_by_room.get("parking")
+        anchor = anchor_slots[0] if anchor_slots else int(floor_zones[0].get("slot_index", 0))
+
+        target_slots: List[int] = []
+        for target_room in ["kitchen", "staircase", "bathroom"]:
+            target_slots.extend(slots_by_room.get(target_room, []))
+
+        path_lengths = [
+            min(_shortest_path_steps(anchor, target_slot), 3) for target_slot in target_slots
+        ]
+        if path_lengths:
+            average_steps = sum(path_lengths) / len(path_lengths)
+            circulation_score = max(0.0, 100.0 - max(0.0, average_steps - 1.0) * 30.0)
+        else:
+            circulation_score = 100.0
+
+        floor_quality_score = round((0.65 * adjacency_score) + (0.35 * circulation_score), 1)
+        floor_metrics.append(
+            {
+                "floor": floor,
+                "adjacency_score": round(adjacency_score, 1),
+                "circulation_score": round(circulation_score, 1),
+                "layout_quality_score": floor_quality_score,
+                "unmet_adjacencies": unmet_adjacencies,
+            }
+        )
+
+    if floor_metrics:
+        overall_quality = round(
+            sum(item["layout_quality_score"] for item in floor_metrics) / len(floor_metrics),
+            1,
+        )
+    else:
+        overall_quality = 0.0
+
+    return {
+        "overall_layout_quality_score": overall_quality,
+        "floor_metrics": floor_metrics,
+    }
 
 
 def generate_conceptual_layout(
@@ -129,56 +369,37 @@ def generate_conceptual_layout(
             "Footprint scaled down from full buildable area to satisfy plot coverage constraints."
         )
 
-    zone_counter = 0
     slots = _quadrant_slots(footprint["width_m"], footprint["depth_m"])
+    zone_counter = 0
 
     preferences = parsed_input.get("preferences") or {}
     parking_requested = bool(isinstance(preferences, dict) and preferences.get("parking"))
+    plot_facing_direction = str(parsed_input.get("plot_facing_direction", "north"))
 
     for floor in range(floors):
-        floor_slots = [dict(slot) for slot in slots]
+        floor_rooms = _build_floor_program(
+            room_queue=room_queue,
+            floor=floor,
+            slot_capacity=len(slots),
+            parking_requested=parking_requested,
+        )
 
-        required_ground = []
-        if floor == 0:
-            if parking_requested:
-                required_ground.append("parking")
-            required_ground.extend(["living_room", "kitchen", "staircase"])
+        assigned_by_slot = _assign_rooms_to_slots(
+            floor_rooms=floor_rooms,
+            slots=slots,
+            floor=floor,
+            plot_facing_direction=plot_facing_direction,
+        )
 
-        assigned_types: List[str] = []
-
-        for required in required_ground:
-            if not floor_slots:
-                break
-            slot = floor_slots.pop(0)
-            _pop_first(room_queue, required)
+        for slot_index, slot in enumerate(slots):
+            room = assigned_by_slot.get(slot_index, "multi_use")
             zone_counter += 1
-            assigned_types.append(required)
-            zones.append(
-                {
-                    "id": f"zone_{zone_counter}",
-                    "room_type": required,
-                    "floor": floor,
-                    "x": round(slot["x"], 3),
-                    "y": round(slot["y"], 3),
-                    "width_m": round(slot["width_m"], 3),
-                    "depth_m": round(slot["depth_m"], 3),
-                    "orientation": slot["orientation"],
-                }
-            )
-
-        for slot in floor_slots:
-            if room_queue:
-                room = room_queue.pop(0)
-            else:
-                room = "multi_use" if floor > 0 else "circulation"
-
-            zone_counter += 1
-            assigned_types.append(room)
             zones.append(
                 {
                     "id": f"zone_{zone_counter}",
                     "room_type": room,
                     "floor": floor,
+                    "slot_index": slot_index,
                     "x": round(slot["x"], 3),
                     "y": round(slot["y"], 3),
                     "width_m": round(slot["width_m"], 3),
@@ -186,20 +407,32 @@ def generate_conceptual_layout(
                     "orientation": slot["orientation"],
                 }
             )
-
-        if floor > 0 and "staircase" not in assigned_types:
-            # Ensure vertical circulation appears on each floor representation.
-            first_zone = next((z for z in zones if z["floor"] == floor), None)
-            if first_zone:
-                first_zone["room_type"] = "staircase"
 
     if room_queue:
         notes.append(
             f"{len(room_queue)} requested room entries were not explicitly allocated and should be refined interactively."
         )
 
+    layout_metrics = _compute_layout_metrics(zones)
+    notes.append(
+        f"Overall layout quality score: {layout_metrics['overall_layout_quality_score']}/100."
+    )
+    for floor_metric in layout_metrics["floor_metrics"]:
+        notes.append(
+            "Floor "
+            f"{floor_metric['floor']} score: {floor_metric['layout_quality_score']}/100 "
+            f"(adjacency {floor_metric['adjacency_score']}, "
+            f"circulation {floor_metric['circulation_score']})."
+        )
+        if floor_metric["unmet_adjacencies"]:
+            notes.append(
+                f"Floor {floor_metric['floor']} unmet adjacencies: "
+                + ", ".join(sorted(floor_metric["unmet_adjacencies"]))
+            )
+
     return {
         "zones": zones,
         "layout_notes": notes,
         "footprint": footprint,
+        "layout_metrics": layout_metrics,
     }
