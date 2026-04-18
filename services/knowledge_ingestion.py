@@ -190,6 +190,14 @@ def _chunk_text(text: str, chunk_chars: int = 1200, overlap_chars: int = 200) ->
     return [chunk for chunk in chunks if chunk]
 
 
+def _truncate_text_for_chunking(text: str, max_section_chars: int) -> str:
+    if max_section_chars <= 0:
+        return text
+    if len(text) <= max_section_chars:
+        return text
+    return text[:max_section_chars]
+
+
 def _chunk_entities(title: str, section_path: List[str], text: str) -> List[str]:
     seed = " ".join([title] + section_path + SENTENCE_SPLIT_RE.split(text[:400]))
     tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_]{2,}", seed.lower())
@@ -226,6 +234,7 @@ def ingest_documents_to_json(
     default_priority: float = 1.0,
     chunk_chars: int = 1200,
     overlap_chars: int = 200,
+    max_section_chars: int = 300000,
 ) -> IngestionResult:
     input_dir = Path(input_dir)
     output_file = Path(output_file)
@@ -269,6 +278,7 @@ def ingest_documents_to_json(
             section_path = [str(entry).strip() for entry in section_path if str(entry).strip()] or [title]
 
             section_text = str(section.get("text", "")).strip()
+            section_text = _truncate_text_for_chunking(section_text, max_section_chars)
             page_no = section.get("page_no")
             if page_no is not None:
                 try:
@@ -276,7 +286,15 @@ def ingest_documents_to_json(
                 except (TypeError, ValueError):
                     page_no = None
 
-            text_chunks = _chunk_text(section_text, chunk_chars=chunk_chars, overlap_chars=overlap_chars)
+            try:
+                text_chunks = _chunk_text(
+                    section_text,
+                    chunk_chars=chunk_chars,
+                    overlap_chars=overlap_chars,
+                )
+            except MemoryError:
+                skipped.append(str(doc_path.relative_to(input_dir)))
+                continue
             for part_idx, chunk_text in enumerate(text_chunks):
                 section_slug = _slugify("::".join(section_path))
                 chunk_id = f"{doc_id}_{chunk_counter}"

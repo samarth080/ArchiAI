@@ -173,3 +173,65 @@ def test_design_api_multi_region_applies_correct_bylaws(tmp_path, settings):
     assert mumbai_payload["applied_bylaws"]["region_id"] == "india_mumbai"
     assert nyc_payload["applied_bylaws"]["region_id"] == "usa_nyc"
     assert mumbai_payload["applied_bylaws"]["max_far"] != nyc_payload["applied_bylaws"]["max_far"]
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_hypar_bridge_endpoint_generates_csv_artifact(tmp_path, settings):
+    settings.ARCHI3D = {
+        **settings.ARCHI3D,
+        "OUTPUTS_DIR": tmp_path,
+    }
+
+    client = APIClient()
+    response = client.post(
+        "/api/v1/design/hypar/bridge/",
+        {
+            "raw_text": "Design a 2-floor residential house in Mumbai",
+            "region": "india_mumbai",
+            "building_type": "residential",
+            "plot_width_m": 30,
+            "plot_depth_m": 40,
+            "num_floors": 2,
+            "num_units": 1,
+            "plot_facing_direction": "north",
+            "preferences": {"parking": True},
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+
+    assert payload["status"] == "ready_for_upload"
+    assert payload["requires_clarification"] is False
+    assert payload["hypar_bridge"]["artifact_path"].endswith(".csv")
+    assert payload["hypar_bridge"]["zone_count"] > 0
+
+    artifact_path = tmp_path / payload["hypar_bridge"]["artifact_path"]
+    assert artifact_path.exists()
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_hypar_bridge_endpoint_requires_clarification_for_sparse_request(tmp_path, settings):
+    settings.ARCHI3D = {
+        **settings.ARCHI3D,
+        "OUTPUTS_DIR": tmp_path,
+    }
+
+    client = APIClient()
+    response = client.post(
+        "/api/v1/design/hypar/bridge/",
+        {"raw_text": "Design a house with vastu"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+
+    assert payload["status"] == "clarification_required"
+    assert payload["requires_clarification"] is True
+    assert isinstance(payload["missing_fields"], list)
+    assert isinstance(payload["clarification_questions"], list)
+    assert payload["hypar_bridge"] == {}

@@ -42,6 +42,8 @@ DEBUGGING TIPS:
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from uuid import uuid4
+from django.conf import settings
 
 from apps.design.models import DesignSession
 from apps.design.serializers import (
@@ -49,7 +51,34 @@ from apps.design.serializers import (
     DesignResponseSerializer,
     DesignListSerializer,
 )
+from services.hypar_bridge import build_hypar_bridge_summary, write_hypar_bridge_csv
 from services.pipeline import run_design_pipeline
+
+
+def _create_design_session(data: dict, pipeline_result: dict) -> DesignSession:
+    return DesignSession.objects.create(
+        raw_text=data.get("raw_text", ""),
+        parsed_input=pipeline_result["parsed_input"],
+        region=pipeline_result["region"],
+        building_type=pipeline_result["building_type"],
+        plot_width_m=pipeline_result["parsed_input"]["plot_width_m"],
+        plot_depth_m=pipeline_result["parsed_input"]["plot_depth_m"],
+        num_floors=pipeline_result["parsed_input"]["num_floors"],
+        num_units=pipeline_result["parsed_input"]["num_units"],
+        plot_facing_direction=pipeline_result["parsed_input"].get(
+            "plot_facing_direction", "north"
+        ),
+        compliance_report=pipeline_result["compliance_report"],
+        applied_bylaws=pipeline_result["applied_bylaws"],
+        vastu_report=pipeline_result["vastu_report"],
+        retrieved_knowledge=pipeline_result["retrieved_knowledge"],
+        layout_zones=pipeline_result["layout_zones"],
+        explanation=pipeline_result["explanation"],
+        glb_file_path=pipeline_result["glb_file_path"],
+        hypar_json_path=pipeline_result["hypar_json_path"],
+        status=pipeline_result["status"],
+        error_message=pipeline_result["error_message"],
+    )
 
 
 class DesignCreateView(APIView):
@@ -91,29 +120,7 @@ class DesignCreateView(APIView):
             pipeline_result = run_design_pipeline(pipeline_input)
 
             # ── Step 2: Persist Session to Database ────────────────────────────
-            session = DesignSession.objects.create(
-                raw_text=data.get("raw_text", ""),
-                parsed_input=pipeline_result["parsed_input"],
-                region=pipeline_result["region"],
-                building_type=pipeline_result["building_type"],
-                plot_width_m=pipeline_result["parsed_input"]["plot_width_m"],
-                plot_depth_m=pipeline_result["parsed_input"]["plot_depth_m"],
-                num_floors=pipeline_result["parsed_input"]["num_floors"],
-                num_units=pipeline_result["parsed_input"]["num_units"],
-                plot_facing_direction=pipeline_result["parsed_input"].get(
-                    "plot_facing_direction", "north"
-                ),
-                compliance_report=pipeline_result["compliance_report"],
-                applied_bylaws=pipeline_result["applied_bylaws"],
-                vastu_report=pipeline_result["vastu_report"],
-                retrieved_knowledge=pipeline_result["retrieved_knowledge"],
-                layout_zones=pipeline_result["layout_zones"],
-                explanation=pipeline_result["explanation"],
-                glb_file_path=pipeline_result["glb_file_path"],
-                hypar_json_path=pipeline_result["hypar_json_path"],
-                status=pipeline_result["status"],
-                error_message=pipeline_result["error_message"],
-            )
+            session = _create_design_session(data=data, pipeline_result=pipeline_result)
 
             # ── Step 3: Format & Return Response ──────────────────────────────
             response_serializer = DesignResponseSerializer(session)
@@ -171,6 +178,105 @@ class DesignListView(APIView):
         sessions = DesignSession.objects.all()[:50]   # Limit to 50 most recent
         serializer = DesignListSerializer(sessions, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class HyparBridgeCreateView(APIView):
+    """POST /api/v1/design/hypar/bridge/
+
+    Runs the standard pipeline and exports a Hypar-uploadable CSV artifact.
+    This endpoint is intended for environments without direct Hypar API keys.
+    """
+
+    def post(self, request):
+        serializer = DesignRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+
+        try:
+            pipeline_input = dict(data)
+            pipeline_input["_explicit_fields"] = list(request.data.keys())
+            pipeline_result = run_design_pipeline(pipeline_input)
+
+            session = _create_design_session(data=data, pipeline_result=pipeline_result)
+
+            if pipeline_result.get("requires_clarification"):
+                return Response(
+                    {
+                        "job_id": f"hypar_bridge_{session.id}",
+                        "session_id": session.id,
+                        "status": "clarification_required",
+                        "requires_clarification": True,
+                        "missing_fields": pipeline_result["parsed_input"]
+                        .get("_parser_meta", {})
+                        .get("missing_fields", []),
+                        "clarification_questions": pipeline_result["parsed_input"]
+                        .get("_parser_meta", {})
+                        .get("clarification_questions", []),
+                        "hypar_bridge": {},
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
+
+            layout_zones = pipeline_result.get("layout_zones", [])
+            if not layout_zones:
+                return Response(
+                    {
+                        "job_id": f"hypar_bridge_{session.id}",
+                        "session_id": session.id,
+                        "status": "no_layout_generated",
+                        "requires_clarification": False,
+                        "hypar_bridge": {},
+                        "detail": "Layout zones were not generated. Spreadsheet export skipped.",
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
+
+            archi3d_settings = getattr(settings, "ARCHI3D", {})
+            resolved_outputs_dir = archi3d_settings.get("OUTPUTS_DIR", settings.BASE_DIR / "outputs")
+
+            session_seed = uuid4().hex[:10]
+            artifact_path = write_hypar_bridge_csv(
+                layout_zones=layout_zones,
+                outputs_dir=resolved_outputs_dir,
+                session_seed=session_seed,
+                region_id=pipeline_result.get("region", "default"),
+                building_type=pipeline_result.get("building_type", "residential"),
+            )
+            bridge_summary = build_hypar_bridge_summary(
+                layout_zones=layout_zones,
+                artifact_path=artifact_path,
+                region_id=pipeline_result.get("region", "default"),
+                building_type=pipeline_result.get("building_type", "residential"),
+            )
+
+            return Response(
+                {
+                    "job_id": f"hypar_bridge_{session.id}_{session_seed}",
+                    "session_id": session.id,
+                    "status": "ready_for_upload",
+                    "requires_clarification": False,
+                    "hypar_bridge": bridge_summary,
+                    "hypar_json_path": pipeline_result.get("hypar_json_path", ""),
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except Exception as exc:
+            DesignSession.objects.create(
+                raw_text=request.data.get("raw_text", ""),
+                region=request.data.get("region", "default"),
+                status="failed",
+                error_message=str(exc),
+            )
+            return Response(
+                {
+                    "error": "Hypar bridge generation failed.",
+                    "detail": str(exc),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class DesignDetailView(APIView):
