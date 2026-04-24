@@ -10,7 +10,12 @@ Full URLs:
     GET    /api/v1/design/<id>/    → Get details of session <id>
 """
 from django.urls import path
-from apps.design.views import DesignCreateView, DesignListView, DesignDetailView
+from apps.design.views import (
+    DesignCreateView,
+    DesignListView,
+    DesignDetailView,
+    HyparBridgeCreateView,
+)
 
 # app_name is used for URL namespacing (e.g., reverse("design:list"))
 app_name = "design"
@@ -18,6 +23,7 @@ app_name = "design"
 urlpatterns = [
     # List + Create
     path("", DesignCreateView.as_view(), name="create"),
+    path("hypar/bridge/", HyparBridgeCreateView.as_view(), name="hypar-bridge"),
     path("list/", DesignListView.as_view(), name="list"),
     # Detail by session ID
     path("<int:session_id>/", DesignDetailView.as_view(), name="detail"),
