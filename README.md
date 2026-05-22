@@ -1,464 +1,381 @@
-﻿# ArchiAI — AI-Powered Architectural Design Platform
+# ArchiAI
 
-A full-stack platform for **deterministic bylaw-compliant architectural planning**, **AI-driven layout generation**, **real-time collaboration**, and **professional exports**. Features a modern browser-based UI for designing, visualizing, and exporting architectural layouts with intelligent compliance checking.
-
-## 🎯 What's New (May 2026)
-
-### ✨ Professional Design Studio
-- **Browser-based design interface** with ChatGPT-style prompt input
-- **Real-time 3D visualization** of generated layouts using CSS 3D transforms
-- **Live project management** — create, save, load, and delete designs
-- **Interactive layers panel** with visibility toggles, selection, and object inspector
-- **Professional export workflow** — PDF reports, DXF for CAD, JSON, screenshots, and project downloads
-- **Compliance dashboard** — instant bylaw validation with pass/fail/warning indicators
-- **Responsive dark theme** with glass-morphism UI and smooth animations
-
-### 🔌 Real-Time Collaboration
-- **WebSocket support** with JWT authentication for instant design updates
-- **Progress broadcasting** — watch designs generate in real-time
-- **Revisions tracking** — all design iterations are saved
-- **Comments system** — add feedback and notes to projects
-- **Share links** — collaborate with team members without account registration
-
-### 📊 Enhanced Exports
-- **PDF reports** with geometry, compliance, and statistics using ReportLab
-- **DXF exports** for CAD integration (AutoCAD, Revit compatibility)
-- **JSON outputs** — structured data for integrations and archival
-- **Background job tracking** — async processing with retry logic and timeouts
+A full-stack AI-powered architectural design platform. Describe a building in plain English and get back a bylaw-compliant room layout, PDF report, DXF file for CAD, and a real-time 3D visualisation — all in one API call.
 
 ---
 
-## 🚀 Quick Start (Windows)
+## What it does
 
-### Backend Setup
-
-1. Open **PowerShell** and navigate to the backend folder:
-
-   \\\powershell
-   cd "D:\My projects\Archi3D\backend"
-   \\\
-
-2. Install dependencies:
-
-   \\\powershell
-   uv sync
-   \\\
-
-3. Apply database migrations:
-
-   \\\powershell
-   uv run python manage.py migrate
-   \\\
-
-4. Start the development server:
-
-   \\\powershell
-   uv run python manage.py runserver 127.0.0.1:8000
-   \\\
-
-5. Open your browser:
-
-   - **http://127.0.0.1:8000/api/v1/health/studio/** — Archi3D Design Studio (full UI)
-   - **http://127.0.0.1:8000/api/v1/health/** — API health check (database, knowledge, services)
-
-### Frontend Setup (Optional - for custom UI development)
-
-\\\ash
-cd "D:\My projects\Archi3D\frontend"
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-\\\
-
-### Troubleshooting
-
-- **\python\ not found**: Use \uv run python ...\ after \uv sync\ or activate the virtual environment
-- **Wrong directory**: Ensure you're in the folder containing \manage.py\ (the \ackend\ folder)
-- **Port already in use**: Try \uv run python manage.py runserver 127.0.0.1:8001\
-- **PowerShell compatibility**: Use \;\ to chain commands instead of \&&\
-
-### Quick API Test (PowerShell)
-
-\\\powershell
-\ = @{
-  raw_text = "Design a 2-floor residential house in Mumbai on a 30x40m plot with parking."
-  region = "india_mumbai"
-  building_type = "residential"
-  plot_width_m = 30
-  plot_depth_m = 40
-  num_floors = 2
-  num_units = 1
-  plot_facing_direction = "north"
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/design/" -Method Post -ContentType "application/json" -Body \
-\\\
+1. **Parses** a natural language brief (e.g. *"3-floor residential house on a 30×40 plot in Mumbai, north-facing"*) using a local Ollama LLM.
+2. **Loads** the appropriate regional building bylaws (Mumbai DCPR, Delhi, NYC, or a conservative fallback).
+3. **Checks compliance** deterministically — setbacks, FAR/FSI, floor count, height, plot coverage, and parking — with no LLM involved in the math.
+4. **Retrieves** relevant architectural principles via a vectorless BM25 knowledge base.
+5. **Generates** a conceptual zone layout with room dimensions and floor assignments.
+6. **Places furniture** within each zone.
+7. **Evaluates** Vastu Shastra preferences (optional, advisory).
+8. **Exports** PDF reports, DXF files for CAD, and Hypar-compatible JSON for 3D viewers.
+9. **Broadcasts** real-time progress via WebSocket as the pipeline runs.
+10. **Persists** every design session and links it to a project for version history.
 
 ---
 
-## 📚 Setup & Testing
+## Tech stack
 
-### Development Commands
+### Backend
 
-\\\ash
-# Install dependencies with lockfile
-uv sync
+| Layer | Technology |
+| --- | --- |
+| Web framework | Django 5 + Django REST Framework |
+| WebSockets | Django Channels + ASGI |
+| Background jobs | Celery + Redis |
+| Authentication | JWT via `djangorestframework-simplejwt` |
+| NLP parsing | Ollama (`llama3.2` by default) |
+| Knowledge retrieval | `rank-bm25` (no vector DB required) |
+| PDF generation | ReportLab |
+| DXF export | `ezdxf` |
+| Geometry | `trimesh` |
+| Database | SQLite (dev) / PostgreSQL (prod) |
+| Package manager | `uv` |
+| Tests | `pytest` + `pytest-django` |
 
-# Run database migrations
-uv run python manage.py migrate
+### Frontend
 
-# Start development server
-uv run python manage.py runserver 127.0.0.1:8000
-
-# Run all tests
-uv run pytest -q
-\\\
-
-### Test Specific Features
-
-\\\ash
-# User authentication
-uv run pytest tests/test_accounts.py -q
-
-# Project management (CRUD, collaborators, revisions)
-uv run pytest tests/test_projects.py -q
-
-# Real-time WebSocket updates
-uv run pytest tests/test_consumers.py -q
-
-# PDF/DXF exports and reports
-uv run pytest tests/test_reports.py -q
-\\\
+| Layer | Technology |
+| --- | --- |
+| Framework | React 19 + Vite |
+| 3D rendering | Three.js |
+| Routing | React Router v7 |
+| HTTP client | Axios |
 
 ---
 
-## 🎨 Browser-Based UI Features
+## Project structure
 
-### Design Studio (\/api/v1/health/studio/\)
-
-The modern design studio includes:
-
-- **Prompt input bar** — Enter design requirements in natural language with smart suggestions
-- **Design generation** — Generate, improve, and regenerate layouts with one click
-- **3D visualization** — Interactive zone visualization with selection, panning, and rotation
-- **Layers panel** — Manage visibility, lock states, and object properties
-- **Inspector panel** — View and edit room dimensions, area, and metadata
-- **Compliance panel** — See all bylaw validation results at a glance
-- **Export modal** — Choose format (PDF, DXF, JSON, screenshot) and download
-- **Settings modal** — Configure project name, description, region, and preferences
-- **Load modal** — Browse and open previously saved designs
-- **Toast notifications** — Instant feedback on all operations
-- **Toolbar** — Floor selector, view controls (2D/3D/Top/Frame/Grid), and reset
-
-### Key UI Components
-
-- **Top bar** — Project info and status indicator
-- **Left panel** — Prompt input and design settings (collapsible)
-- **Center canvas** — 3D room visualization
-- **Right panel** — Layers, inspector, and statistics (collapsible)
-- **Bottom toolbar** — Quick access to tools (Select, Move, Rotate, Scale, Delete, Duplicate)
-- **Modals** — Export, settings, compliance, load project dialogs
-
----
-
-## 🔌 API Reference
-
-### Design Generation
-
-Generate a new architectural layout from text requirements:
-
-\\\ash
-POST /api/v1/design/
-
-Request:
-{
-  "raw_text": "Design a 2-floor residential house in Mumbai on a 30x40m plot",
-  "region": "india_mumbai",
-  "building_type": "residential",
-  "plot_width_m": 30,
-  "plot_depth_m": 40,
-  "num_floors": 2,
-  "num_units": 1,
-  "plot_facing_direction": "north"
-}
-
-Response:
-{
-  "session_id": "uuid",
-  "parsed_input": { ... },
-  "design_output": {
-    "zones": [ ... ],
-    "connections": [ ... ],
-    "compliance_result": { ... }
-  },
-  "pdf_path": "outputs/report_<seed>.pdf",
-  "dxf_path": "outputs/design_<seed>.dxf",
-  "json_path": "outputs/hypar_<seed>.json"
-}
-\\\
-
-### Project Management
-
-\\\
-GET/POST /api/v1/projects/                    # List and create projects
-GET/PUT/DELETE /api/v1/projects/<id>/         # Retrieve, update, delete
-POST /api/v1/projects/<id>/collaborators/     # Add team members
-GET /api/v1/projects/<id>/revisions/          # Access version history
-POST /api/v1/projects/<id>/comments/          # Add comments
-GET /api/v1/projects/<id>/share-link/         # Generate shareable links
-\\\
-
-### Background Jobs
-
-\\\
-POST /api/v1/design/hypar/bridge/jobs/        # Submit async export job
-GET /api/v1/design/jobs/<job_id>/             # Check job status
-GET /api/v1/design/jobs/?limit=20             # List recent jobs
-\\\
-
-### Knowledge Ingestion
-
-\\\
-POST /api/v1/design/ingestion/jobs/           # Ingest knowledge documents
-GET /api/v1/design/jobs/<job_id>/             # Check ingestion status
-\\\
-
----
-
-## 🏗️ Project Architecture
-
-\\\
-archi3d/
+```text
+ArchiAI/
 ├── backend/
 │   ├── apps/
-│   │   ├── accounts/          # User authentication
-│   │   ├── design/            # Design generation & job tracking
-│   │   ├── projects/          # Project management & collaboration
-│   │   ├── reports/           # PDF/DXF generation
-│   │   └── health/            # Health checks & studio UI
+│   │   ├── accounts/       # JWT user auth (register, login, token refresh)
+│   │   ├── design/         # Design pipeline, OperationJob, WebSocket consumer
+│   │   ├── health/         # Health check + browser-based Design Studio
+│   │   ├── projects/       # Projects, collaborators, revisions, comments
+│   │   └── reports/        # PDF and DXF generation
 │   ├── archi3d/
-│   │   ├── settings/          # Django settings (base/dev/prod)
-│   │   ├── urls.py            # URL routing
-│   │   ├── asgi.py            # Daphne ASGI server
-│   │   ├── routing.py         # WebSocket routing
-│   │   └── celery.py          # Async task queue
-│   ├── bylaws/                # Regional bylaw data (YAML)
-│   ├── knowledge/             # RAG corpus and ingested documents
-│   ├── outputs/               # Generated designs and exports
-│   ├── scripts/               # Utility scripts
-│   └── requirements.txt
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/        # React/Vue components
-│   │   ├── pages/             # Page layouts
-│   │   ├── styles/            # CSS/SCSS
-│   │   └── api.js             # API integration
-│   ├── public/                # Static assets
-│   ├── package.json
-│   └── vite.config.js
-│
-├── README.md
-├── DEVELOPER_GUIDE.md
-├── FRONTEND_SETUP_GUIDE.md
-└── LICENSE
-\\\
+│   │   ├── settings/
+│   │   │   ├── base.py     # Shared settings
+│   │   │   ├── development.py
+│   │   │   └── production.py
+│   │   ├── celery.py       # Celery app config
+│   │   ├── routing.py      # WebSocket URL routing
+│   │   ├── urls.py         # Root HTTP URL config
+│   │   └── asgi.py
+│   ├── bylaws/             # Regional bylaw rulesets (JSON)
+│   │   ├── default.json
+│   │   ├── india_delhi.json
+│   │   ├── india_mumbai.json
+│   │   └── usa_nyc.json
+│   ├── services/           # All business logic (no Django deps)
+│   │   ├── pipeline.py           # End-to-end orchestrator
+│   │   ├── input_parser.py       # Ollama NLP parser
+│   │   ├── bylaw_loader.py       # Bylaw JSON loader + region detection
+│   │   ├── rule_engine.py        # Deterministic compliance checks
+│   │   ├── layout_generator.py   # Conceptual zone layout
+│   │   ├── furniture_placer.py   # Furniture placement within zones
+│   │   ├── geometry_builder.py   # Hypar JSON builder
+│   │   ├── geometry_validator.py
+│   │   ├── hypar_bridge.py       # Hypar cloud bridge
+│   │   ├── hypar_client.py
+│   │   ├── report_pdf.py         # PDF report generation
+│   │   ├── dxf_exporter.py       # DXF file generation
+│   │   ├── vectorless_rag.py     # BM25 knowledge retrieval
+│   │   ├── knowledge_ingestion.py
+│   │   ├── explanation_builder.py
+│   │   ├── design_brief_builder.py
+│   │   ├── background_jobs.py    # Async job management
+│   │   ├── safe_web_scraper.py
+│   │   └── vastu_rules.py
+│   ├── scripts/            # Utility scripts (knowledge ingestion, scraping)
+│   ├── tests/              # pytest test suite
+│   └── manage.py
+└── frontend/
+    ├── src/
+    │   ├── components/
+    │   │   ├── Landing.jsx
+    │   │   └── Studio/
+    │   │       ├── index.jsx
+    │   │       ├── Canvas2DView.jsx
+    │   │       ├── Canvas3DView.jsx  # Three.js
+    │   │       ├── LeftSidebar.jsx
+    │   │       ├── RightSidebar.jsx
+    │   │       ├── CanvasToolbar.jsx
+    │   │       └── TopBar.jsx
+    │   ├── services/api.js   # Axios API client
+    │   ├── utils/            # Canvas helpers, colors, element manager
+    │   └── styles/
+    └── package.json
+```
 
 ---
 
-## 🔐 Technology Stack
+## Setup
 
-**Backend:**
-- Django 4.2 + Django REST Framework (DRF)
-- Daphne ASGI server for WebSocket support
-- Django Channels for real-time communication
-- Redis for caching and job queue
-- Celery for async task processing
-- JWT authentication with secure token storage
+### Prerequisites
 
-**Frontend:**
-- Modern browser-based UI (HTML/CSS/JavaScript)
-- CSS 3D transforms for interactive visualization
-- Fetch API for REST communication
-- WebSocket for real-time updates
-- Glass-morphism and modern CSS design
+- Python 3.10+
+- Node.js 18+ (for the React frontend)
+- Redis (for Celery and Django Channels)
+- [Ollama](https://ollama.com) running locally with `llama3.2` pulled
 
-**Data & Export:**
-- ReportLab for PDF generation with custom styling
-- ezdxf for DXF export with CAD compatibility
-- SQLite (development) / PostgreSQL (production)
-- JSON for inter-system communication
+```bash
+ollama pull llama3.2
+redis-server  # or start via your OS service manager
+```
 
-**Knowledge & Intelligence:**
-- Vectorless retriever with region/building-type scoping
-- Ollama integration for local LLM inference
-- RAG (Retrieval-Augmented Generation) for design explanations
-- Regional bylaw engine with compliance checking
+### Backend setup
 
----
+```bash
+cd backend
 
-## ✨ Core Capabilities
+# Install dependencies
+pip install uv
+uv sync
 
-### Layout Generation
-- AI-driven zone creation based on natural language requirements
-- Automatic compliance checking against regional bylaws
-- Structural feasibility validation
-- Optimization for circulation and accessibility
+# Configure environment
+cp .env.example .env  # then edit .env with your values
 
-### Multi-Format Exports
-- **PDF**: Professional reports with geometry, statistics, and compliance data
-- **DXF**: CAD-compatible format for integration with design tools
-- **JSON**: Structured data for programmatic access and integrations
-- **Screenshots**: High-quality visualization captures
+# Apply migrations
+python manage.py migrate
 
-### Collaboration
-- Real-time updates across multiple users
-- Project sharing with role-based access
-- Design revision history with rollback
-- Comment threads on design elements
+# Start the server (ASGI — required for WebSockets)
+python manage.py runserver
+```
 
-### Compliance Intelligence
-- Automated bylaw validation against regional standards
-- Detailed pass/fail/warning indicators
-- Compliance report generation
-- Support for multiple regions (India - Delhi, Mumbai, NCR; US - NYC; International)
+Key `.env` variables:
 
----
+```ini
+SECRET_KEY=your-secret-key-here
+DEBUG=True
 
-## 🗺️ Completed Features ✅
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+RAG_TOP_K=5
 
-- ✅ Professional browser-based design studio with full UI
-- ✅ Django backend with project management system
-- ✅ WebSocket support for real-time collaboration
-- ✅ PDF and DXF export capabilities
-- ✅ Background job tracking with retry logic
-- ✅ User authentication and account management
-- ✅ Multi-region bylaw compliance engine
-- ✅ Knowledge ingestion pipeline
-- ✅ Production-ready database setup
+REDIS_URL=redis://localhost:6379/0
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/1
 
----
+# Optional — leave blank to skip Hypar cloud submission
+HYPAR_API_URL=
+HYPAR_API_TOKEN=
 
-## 🚀 Roadmap — Future Enhancements
+# Set to True to require JWT auth on POST /api/v1/design/
+REQUIRE_AUTH_FOR_DESIGN=False
+```
 
-### Immediate Priority (Q2 2026)
+### Celery worker (for background exports)
 
-1. **Enhanced Compliance Engine**
-   - Corridor width validation and routing
-   - Stair core continuity across floors
-   - Service shaft and MEP routing verification
-   - Fire safety and egress calculations
-   - FSI (Floor Space Index) optimization
+```bash
+cd backend
+celery -A archi3d worker -l info
+```
 
-2. **Knowledge Expansion**
-   - Additional Indian regions (Bangalore, Hyderabad, Pune, Chennai)
-   - International bylaw support (UK, EU, APAC regions)
-   - Architecture reference books (Neufert, Time-Saver Standards, NBC codes)
-   - Building type-specific knowledge bases
+### Frontend setup
 
-3. **UI/UX Improvements**
-   - Full 3D rendering with Three.js for better visualization
-   - Section cuts and elevation views
-   - Material and lighting preview
-   - Undo/redo functionality with history panel
-   - Keyboard shortcuts for power users
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-4. **Advanced Design Tools**
-   - Manual zone adjustment and repositioning
-   - Dimension fine-tuning
-   - Custom zone types and properties
-   - Design templates for quick starts
-
-### Medium-term (Q3-Q4 2026)
-
-5. **Real-time Collaboration Enhancements**
-   - Multi-user simultaneous editing
-   - Design versioning and branching
-   - Role-based permissions (viewer, editor, owner)
-   - Audit logs and change tracking
-   - Conflict resolution for concurrent edits
-
-6. **Advanced Visualization**
-   - Full 3D model rendering with textures
-   - Augmented Reality (AR) preview on mobile
-   - Virtual Reality (VR) walkthrough support
-   - Photorealistic rendering options
-
-7. **Integration & API**
-   - Hypar Elements API integration for geometry export
-   - Direct Revit plugin for BIM integration
-   - SketchUp plugin for design browsing
-   - BIM360 and Construction Cloud integration
-   - Third-party CAD tool plugins
-
-8. **Data & Analytics**
-   - Design performance metrics dashboard
-   - Project analytics and statistics
-   - Usage patterns and design trends
-   - Client reporting and portfolio management
-
-### Long-term (2027+)
-
-9. **SaaS Platform**
-   - Subscription tiers (free, professional, enterprise)
-   - Multi-team management and organization support
-   - Enterprise SSO and access controls
-   - Usage analytics and billing dashboard
-   - API marketplace for third-party integrations
-
-10. **AI Model Improvements**
-    - Custom model fine-tuning on architectural dataset
-    - Region-specific design model variants
-    - Machine learning-based design optimization
-    - Automated design quality scoring
-    - A/B testing framework for algorithm improvements
-
-11. **Mobile Experience**
-    - Native iOS/Android mobile apps
-    - Offline-first architecture with local caching
-    - Mobile-optimized design review interface
-    - AR visualization on mobile devices
-    - Quick project sharing and preview
-
-12. **Advanced Features**
-    - Parametric design support
-    - Design pattern libraries and templates
-    - Collaborative mood boards and inspiration
-    - Cost estimation integration
-    - Sustainability and green building scoring
+The React app runs at `http://localhost:5173`.
 
 ---
 
-## 📖 Documentation
+## API reference
 
-- [Frontend Setup Guide](FRONTEND_SETUP_GUIDE.md) — Browser UI development, build, and deployment
-- [Developer Guide](DEVELOPER_GUIDE.md) — Architecture, coding standards, and contribution guidelines
-- [Backend Roadmap](backend/IMPLEMENTATION_ROADMAP.md) — Detailed implementation plan
-- [Collaboration Handoff](backend/COLLABORATION_HANDOFF.md) — Team workflow and git practices
+### Authentication — `/api/v1/auth/`
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/api/v1/auth/register/` | Create a new account |
+| POST | `/api/v1/auth/login/` | Obtain JWT access + refresh tokens |
+| POST | `/api/v1/auth/token/refresh/` | Refresh an access token |
+| POST | `/api/v1/auth/logout/` | Blacklist a refresh token |
+
+### Design pipeline — `/api/v1/design/`
+
+#### `POST /api/v1/design/`
+
+Run the full pipeline. Returns a design session with compliance report, layout zones, and explanation.
+
+**Minimum request body:**
+
+```json
+{
+  "plot_width_m": 30,
+  "plot_depth_m": 40
+}
+```
+
+**Full request body:**
+
+```json
+{
+  "raw_text": "3-floor residential house in Mumbai on a 30x40 plot, north-facing, 2 bedrooms",
+  "plot_width_m": 30,
+  "plot_depth_m": 40,
+  "num_floors": 3,
+  "num_units": 1,
+  "region": "india_mumbai",
+  "building_type": "residential",
+  "plot_facing_direction": "north",
+  "use_vastu": true
+}
+```
+
+**Response (201):**
+
+```json
+{
+  "session_id": "uuid",
+  "status": "completed",
+  "region": "india_mumbai",
+  "compliance_report": {
+    "is_fully_compliant": true,
+    "adjusted_floors": 3,
+    "required_parking_stalls": 1,
+    "checks": []
+  },
+  "layout_zones": [
+    { "room_type": "living", "floor": 0, "x": 0, "y": 0, "width_m": 5, "depth_m": 4 }
+  ],
+  "vastu_report": { "score": 85, "room_checks": [] },
+  "explanation": "...",
+  "hypar_json_path": "outputs/session_a3f91b.json",
+  "requires_clarification": false
+}
+```
+
+If the parser needs clarification, the response returns `"requires_clarification": true`. Answer the questions and resubmit.
+
+#### Other design endpoints
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/v1/design/` | List last 50 sessions |
+| GET | `/api/v1/design/<id>/` | Retrieve a session |
+| POST | `/api/v1/design/hypar/bridge/jobs/` | Submit async Hypar export |
+| GET | `/api/v1/design/jobs/<job_id>/` | Poll job status |
+| GET | `/api/v1/design/jobs/` | List recent jobs |
+| POST | `/api/v1/design/ingestion/jobs/` | Ingest knowledge documents |
+
+### Projects — `/api/v1/projects/`
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET / POST | `/api/v1/projects/` | List or create projects |
+| GET / PUT / DELETE | `/api/v1/projects/<id>/` | Retrieve, update, or delete |
+| POST | `/api/v1/projects/<id>/collaborators/` | Add a collaborator (viewer / editor / admin) |
+| GET | `/api/v1/projects/<id>/revisions/` | Version history |
+| POST | `/api/v1/projects/<id>/comments/` | Add a comment to a revision |
+| GET | `/api/v1/projects/<id>/share-link/` | Get a public share link |
+
+### Reports — `/api/v1/reports/`
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/api/v1/reports/pdf/` | Generate a PDF report for a session |
+| POST | `/api/v1/reports/dxf/` | Generate a DXF file for CAD |
+
+### Health — `/api/v1/health/`
+
+Returns `200 OK` when the server is running. Also serves the built-in browser Design Studio at `/api/v1/health/studio/`.
+
+### WebSocket — real-time progress
+
+Connect while a design job is running to stream progress events:
+
+```text
+ws://localhost:8000/ws/design/<job_id>/?token=<access_token>
+```
+
+Events received:
+
+```json
+{ "stage": "parsing",    "pct": 20,  "message": "Parsing input..." }
+{ "stage": "compliance", "pct": 50,  "message": "Checking bylaws..." }
+{ "stage": "layout",     "pct": 80,  "message": "Generating layout..." }
+{ "stage": "complete",   "pct": 100, "result": {} }
+```
 
 ---
 
-## 🤝 Contributing
+## Regions and bylaws
 
-We welcome contributions! Please refer to [Developer Guide](DEVELOPER_GUIDE.md) for:
-- Code style and best practices
-- Testing requirements and coverage
-- Pull request workflow
-- Setting up development environment
-- Architecture and design patterns
+| `region` value | Ruleset |
+| --- | --- |
+| `india_mumbai` | DCPR 2034 |
+| `india_delhi` | Delhi building bylaws |
+| `usa_nyc` | NYC Zoning Resolution |
+| `default` | Conservative fallback (stricter than average) |
 
----
-
-## 📄 License
-
-See [LICENSE](backend/LICENSE) file for licensing details.
+If no region is specified, the parser attempts to detect it from `raw_text`. To add a new region, create `bylaws/<region_id>.json` following the structure in `bylaws/default.json`.
 
 ---
 
-**Made with ❤️ for architects and designers**
+## Compliance checks
+
+The rule engine (`services/rule_engine.py`) is entirely deterministic — no LLM involved:
+
+| Check | What it validates |
+| --- | --- |
+| Buildable area | Plot is large enough after setbacks |
+| Floor count | Requested floors ≤ bylaw maximum |
+| Height | `floors × floor_height_m` ≤ `max_height_m` |
+| FAR / FSI | Total built area ÷ plot area ≤ `max_far` |
+| Plot coverage | Footprint ÷ plot area ≤ `max_plot_coverage_pct` |
+| Parking | Advisory — stalls = `ceil(units × min_stalls_per_unit)` |
+
+If floors or FAR exceed the limit, `adjusted_floors` in the response shows the legal maximum.
+
+---
+
+## Session lifecycle
+
+```text
+received → compliance_checked → layout_generated → completed
+                                                 ↘ failed
+```
+
+- `received` — clarification needed; pipeline stopped early.
+- `compliance_checked` — bylaws checked but no layout zones generated.
+- `layout_generated` — zones exist but geometry validation found overlaps; exports deferred.
+- `completed` — full pipeline ran successfully.
+- `failed` — unhandled error; see `error_message`.
+
+---
+
+## Running tests
+
+```bash
+cd backend
+pytest
+```
+
+Test files cover accounts auth, the design API, WebSocket consumers, knowledge ingestion, pipeline services, project management, reports, and the rule engine.
+
+---
+
+## Django Admin
+
+Browse all models at `http://localhost:8000/admin/` after creating a superuser:
+
+```bash
+python manage.py createsuperuser
+```
+
+---
+
+## License
+
+See [backend/LICENSE](backend/LICENSE).
